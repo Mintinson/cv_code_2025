@@ -33,6 +33,11 @@ option("use_cuda")
     add_defines("USE_CUDA")
 option_end()
 
+-- targets
+target("test_lib")
+    set_kind("binary")
+    add_files("src/compiler_check.cpp")
+    set_languages("c++23")
 
 target("test_opencv")
     set_kind("binary")

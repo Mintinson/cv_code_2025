@@ -73,24 +73,7 @@ endif()
 
 # 尝试 3: 从源码构建 (如果开启了选项)
 if(NOT OpenCV_FOUND)
-    if(BUILD_OPENCV)
-        message(STATUS "OpenCV not found. Fetching and building from source (This may take a while)...")
-        FetchContent_Declare(
-            opencv
-            GIT_REPOSITORY https://github.com/opencv/opencv.git
-            GIT_TAG 4.10.0
-            GIT_SHALLOW TRUE
-        )
-        set(BUILD_LIST core highgui imgproc features2d calib3d videoio) # 仅构建核心模块以加速
-        set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(BUILD_PERF_TESTS OFF CACHE BOOL "" FORCE)
-        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(BUILD_opencv_apps OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(opencv)
-        set(OpenCV_LIBS opencv_core opencv_highgui opencv_imgproc opencv_features2d opencv_calib3d)
-    else()
-        message(FATAL_ERROR "OpenCV not found! Please set OpenCV_DIR environment variable or enable BUILD_OPENCV option.")
-    endif()
+    message(FATAL_ERROR "OpenCV not found! Please set OpenCV_DIR environment variable or enable BUILD_OPENCV option.")
 else()
     message(STATUS "Found OpenCV: ${OpenCV_VERSION} at ${OpenCV_DIR}")
 endif()
@@ -201,6 +184,7 @@ endfunction()
 # ==============================================================================
 # 5. Targets
 # ==============================================================================
+add_executable(test_lib "src/compiler_check.cpp")
 
 # --- Target 1: Simple Execute ---
 add_executable(test_opencv "src/test_opencv.cpp")
@@ -221,4 +205,3 @@ else()
 endif()
 
 # copy_dlls_post_build(test_opencv)
-add_executable(test_lib "src/compiler_check.cpp")
