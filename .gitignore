@@ -13,3 +13,6 @@ out/
 
 # results
 results/
+
+# Compilation database
+compile_commands.json
