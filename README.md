@@ -233,40 +233,6 @@ cv_code_2025/
 - **快速模式**: `useEcc=false`, `smlWindowSize=3`, `useParallelExec=true`
 - **高质量模式**: `useEcc=true`, `smlWindowSize=7`, `useGuidedFilter=true`
 
-## 常见问题
-
-### 1. 编译错误：不支持 C++23
-
-**解决方法**:
-- 确保使用支持 C++23 的编译器（GCC 13+, Clang 16+, MSVC 17.6+）
-- 更新编译器到最新版本
-
-### 2. CUDA 编译失败
-
-**解决方法**:
-- 确保 CUDA Toolkit 版本与编译器兼容
-- CUDA 代码使用 C++20，确保 nvcc 支持
-- 如果仍有问题，可以禁用 CUDA：`xmake f --use_cuda=n`
-
-### 3. 运行时找不到 OpenCV 库
-
-**解决方法**:
-- **Xmake**: 确保已成功安装依赖 `xmake f -c` 重新配置
-- **CMake/Vcpkg**: 检查 Vcpkg 是否正确安装了 opencv4
-
-### 4. 图像无法加载
-
-**解决方法**:
-- 检查图像路径是否正确：`images/project_imgs/`
-- 确保图像格式为 `.bmp`, `.jpg` 或 `.png`
-- 查看程序日志输出的错误信息
-
-### 5. 内存不足
-
-**解决方法**:
-- 减少图像数量或缩小图像尺寸
-- 禁用某些内存密集型选项（如 `saveData`）
-- 如果使用彩色图像，可以尝试灰度图像（`useColor=false`）
 
 ## 开发说明
 
@@ -290,10 +256,3 @@ cv_code_2025/
 - `JointBilateralFilter`: 联合双边滤波器实现
 - `MyCmdParser`: 命令行解析器
 - `Logger`: 日志系统
-
-
----
-
-**作者**: wwf  
-**日期**: 2025-12-14  
-**版本**: 1.0.0
