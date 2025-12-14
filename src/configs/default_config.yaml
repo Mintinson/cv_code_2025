@@ -1,0 +1,27 @@
+useColor: false  # Use rgb image instead of grayscale
+useCuda: false  # Use CUDA acceleration
+useEcc: false  # Use ECC alignment
+useRDF: false  # Use RDF to compute focus volume
+useGuidedFilter: true  # Use guided filter
+useFusionRefine: true  # Use weight-based fusion
+useParallelExec: true  # Use parallel execution
+useInpaint: true  # Use inpainting
+saveData: true  # Save result data to txt
+orbNumFeatures: 1000  # ORB features count
+eccResizeFactor: 0.5  # ECC resize factor
+eccMaxCount: 50  # ECC max count
+eccEpsilon: 0.0001  # ECC epsilon
+smlWindowSize: 5  # SML window size (Only used when useRDF is false)
+rdfOuterR: 3  # RDF outer radius
+rdfInnerR: 1  # RDF inner radius
+ransacThreshold: 5  # RANSAC threshold
+refinedGaussKSize: 5  # Blur kernel size in refined depth map
+fusionGaussKSize: 7  # Blur kernel size in fusion all in focus image
+guidedFilterRadius: 8  # Guided filter radius
+guidedFilterEps: 0.01  # Guided filter eps
+bilateralFilterD: 9  # Bilateral diameter
+bilateralSigmaColor: 10  # Bilateral color sigma
+bilateralSigmaSpace: 5  # Bilateral space sigma
+physicalDepthStart: 1  # Start distance (mm)
+physicalDepthStep: 2  # Step distance (mm)
+outputSubDir: unified  # Output directory

@@ -1,0 +1,11 @@
+CompileFlags:
+    Add: ["-std:latest", "/clang:-std=c++23"]
+
+Diagnostics:
+    ClangTidy:
+        CheckOptions:
+            readability-identifier-naming.ClassMemberPrefix: ""
+            readability-identifier-naming.ClassMemberSuffix: _
+            readability-identifier-naming.MemberCase: camelBack
+            # readability-identifier-naming.ClassMemberPrefix: m_
+            readability-identifier-naming.ClassMemberCase: camelBack

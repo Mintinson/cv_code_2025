@@ -1,0 +1,15 @@
+# Xmake cache
+.xmake/
+build/
+
+# MacOS Cache
+.DS_Store
+
+# Python cache
+.cache/
+
+# cmake build output
+out/
+
+# results
+results/

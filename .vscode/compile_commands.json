@@ -1,0 +1,6 @@
+[
+{
+  "directory": "/run/media/mintinson/DataDiskD/homework/post_first_1/computer_vision/cv_code_2025",
+  "arguments": ["/usr/bin/g++", "-c", "-m64", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-std=c++23", "-DPROJECT_ROOT=R\"(/run/media/mintinson/DataDiskD/homework/post_first_1/computer_vision/cv_code_2025)\"", "-DBUILD_DIR=R\"(build)\"", "-DSOURCE_DIR=R\"(/run/media/mintinson/DataDiskD/homework/post_first_1/computer_vision/cv_code_2025/src)\"", "-DIMAGE_DIR=R\"(/run/media/mintinson/DataDiskD/homework/post_first_1/computer_vision/cv_code_2025/images)\"", "-isystem", "/home/mintinson/.xmake/packages/o/opencv/4.11.0/e9b5e774f20841f59b007acbdef2bd3b/include/opencv4", "-isystem", "/home/mintinson/.xmake/packages/f/ffmpeg/7.1/de7b33758dd545509a1f89d73b07c938/include", "-isystem", "/usr/include/libdrm", "-DNDEBUG", "-o", "build/.objs/test_opencv/linux/x86_64/release/src/test_opencv.cpp.o", "src/test_opencv.cpp"],
+  "file": "src/test_opencv.cpp"
+}]

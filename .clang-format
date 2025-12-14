@@ -1,0 +1,44 @@
+BasedOnStyle: WebKit
+AccessModifierOffset: -4
+AlignAfterOpenBracket: true   
+AlignConsecutiveAssignments: true # a   = 1; bb  = 2; ccc = 3;
+AlignTrailingComments: true  # align inline comments
+AlignOperands: true # align the operands in a binary expression
+
+AllowShortFunctionsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
+AlignConsecutiveMacros: true
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: true
+# if false, then the parameters of function rather on a single line, 
+# or on multiple lines with each parameter on a single line
+BinPackParameters: false   # for function definitions and declarations
+BinPackArguments: false  # for function calls
+# BreakBeforeBraces: Allman
+BraceWrapping:
+  # AfterCaseLabel: false
+  AfterClass: true
+  AfterControlStatement: false
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  # AfterObjCDeclaration: false
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: true
+  BeforeCatch: true
+  BeforeElse: true
+  # IndentBraces: false
+  # SplitEmptyFunction: true
+  # SplitEmptyRecord: true
+  # SplitEmptyNamespace: true
+# BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Custom
+BreakConstructorInitializersBeforeComma: false  # 总是在逗号和对齐逗号跟冒号前把构造函数初始化式换行。
+BreakStringLiterals: false  # 当格式化时，总是对字面量字符串换行。
+SortIncludes: true
+SortUsingDeclarations: true
+SpacesBeforeTrailingComments: 1
+PointerAlignment: Left
+ColumnLimit: 100

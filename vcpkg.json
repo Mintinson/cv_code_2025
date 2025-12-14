@@ -1,0 +1,6 @@
+{
+  "dependencies": [
+    "opencv4",
+    "yaml-cpp"
+  ]
+}
