@@ -1,5 +1,7 @@
 #include <iostream>
+#include <ranges>
 #include <string_view>
+#include <version>
 
 /**
  * @brief print C++ standard version information
@@ -7,9 +9,9 @@
 void print_cpp_version()
 {
     std::cout << "=== C++ Standard Version ===" << std::endl;
-#ifdef _MSC_VER // __cplusplus is not reliable in MSVC see
-                // https://learn.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=msvc-170
-    std::cout << "__cplusplus: " << _MSVC_LANG << std::endl;
+#if defined(_MSC_VER) && !defined(__clang__) // __cplusplus is not reliable in MSVC see
+    // https://learn.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=msvc-170
+    std::cout << "__cplusplus(MSVC): " << _MSVC_LANG << std::endl;
 
     std::cout << "Detected as: ";
     // MSVC 特例处理

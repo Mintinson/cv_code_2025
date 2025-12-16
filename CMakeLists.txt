@@ -71,7 +71,6 @@ elseif(NOT OpenCV_FOUND AND DEFINED MANUAL_OpenCV_DIR)
     find_package(OpenCV QUIET)
 endif()
 
-# 尝试 3: 从源码构建 (如果开启了选项)
 if(NOT OpenCV_FOUND)
     message(FATAL_ERROR "OpenCV not found! Please set OpenCV_DIR environment variable or enable BUILD_OPENCV option.")
 else()

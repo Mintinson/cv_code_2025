@@ -1,6 +1,15 @@
 add_rules("mode.debug", "mode.release")
 
-add_requires("opencv 4.11.0")
+includes("toolchains/clang_libcxx.lua")
+
+local opencv_configs = {webp = true}
+
+if get_config("toolchain") == "clang-cl" then
+    opencv_configs.webp = false
+end
+
+
+add_requires("opencv 4.11.0", {configs = opencv_configs})
 add_requires("yaml-cpp 0.8.0")
 
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})  -- for intellisense like clangd
@@ -17,20 +26,12 @@ if is_plat("windows") then
     add_cxflags("/utf-8", {toolchain = "cl"})
 end
 
--- 1. 定义检测选项 (只负责检测和定义宏)
+-- -- 1. 定义检测选项 (只负责检测和定义宏)
 option("use_cuda")
-    set_default(true)
+    set_default(false) -- 默认关闭，除非用户显式开启
     set_showmenu(true)
-    set_description("Enable CUDA support if available")
-    
-    -- 定义检测逻辑
-    on_check(function (option)
-        import("lib.detect.find_package")
-        return find_package("cuda") ~= nil
-    end)
-    
-    -- 如果启用，自动定义宏 (add_defines 是 option 支持的 API)
-    add_defines("USE_CUDA")
+    set_description("Enable CUDA support (requires CUDA Toolkit)")
+    -- 移除了 on_check 和 add_defines，防止全局配置失败
 option_end()
 
 -- targets
@@ -51,29 +52,30 @@ target("final_project")
     set_languages("c++23")
     add_packages("opencv", "yaml-cpp")
 
-    -- 挂载选项 (这一步会触发 on_check 检测)
+    -- 挂载选项（为了让用户可以在 menuconfig 中看到该选项关联到了此 target）
     add_options("use_cuda")
 
 
-    -- 3. 根据检测结果，条件性添加 CUDA 文件和包
+    -- -----------------------------------------------------------
+    -- 2. 在 Target 内部根据开关状态进行检测和配置
+    -- -----------------------------------------------------------
+    -- 只有当用户显式开启了 use_cuda (xmake f --use_cuda=y) 时，才进入此逻辑
     if has_config("use_cuda") then
-        -- 这些函数必须写在 target 作用域内
+        
+-- 1. 尝试添加 cuda 包（xmake 会自动查找，找不到可能会报 warning 或 error）
         add_packages("cuda")
         
-        -- 单独给 cu 文件设置 C++20
+        -- 2. 直接添加宏和文件
+        add_defines("USE_CUDA")
         add_files("src/cuda_operators.cu", {languages = "c++20"})
         
-        -- CUDA 编译选项
+        -- 3. 编译选项
         add_cugencodes("native")
         add_cuflags("-allow-unsupported-compiler", {force = true})
         if is_plat("windows") then
             add_cuflags("--compiler-options=/utf-8")
         end
-        
-        -- 如果不是通过 add_packages("cuda") 自动引入规则，通常建议加上这个
-        -- add_rules("utils.cuda.build") 
     end
---
 -- If you want to known more usage about xmake, please see https://xmake.io
 --
 -- ## FAQ

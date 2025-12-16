@@ -1421,7 +1421,7 @@ int main(int argc, char** argv)
     if (parser.isUserProvided("config")) {
         configName = parser.getValue<std::string>("config").value();
     }
-    auto configDir = fs::path(PROJECT_ROOT) / "configs";
+    auto configDir = fs::path(SOURCE_DIR) / "configs";
     if (auto configPath = configDir / configName; fs::exists(configPath)) {
         try {
             Log.info("Loading configuration from: {}", configPath.string());

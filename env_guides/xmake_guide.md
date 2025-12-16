@@ -3,14 +3,15 @@
 [Xmake](https://xmake.io/zh/) 是一个轻量级的跨平台构建工具，配置简单，依赖管理自动化。
 
 测试过的环境和工具链：
-* Windows + MSVC ✅
-* Windows + MinGW ❌ （存在链接失败的问题）
-* Linux + GCC ✅
+* Windows + MSVC + STL ✅
+* Windows + MinGW + libstdc++ ❌ （存在链接失败的问题）
+* Windows + Clang-cl + STL ✅
+* Linux + GCC + libstdc++ ✅
+* Linux + Clang + libstdc++ ✅
 
 待测试的环境
-* Windows + Clang-cl 
-* Linux + Clang
 * Linux + Clang + libc++
+
 
 若系统满足上述条件，可以接着使用xmake，其更加方便，配置文件更加直观快捷。
 
@@ -41,6 +42,11 @@ xmake f -m release        # 发布模式（推荐）
 # 更换编译器
 xmake f --toolchain=auto # 默认工具链
 xmake f --toolchain=gcc # 使用 gcc
+xmake f --toolchain=clang # 使用 clang
+xmake f --toolchain=clang+libc++ # 使用 clang + libc++
+
+# 启动 cuda (默认不启动)
+xmake f --toolchain=auto --use_cuda=y  # 其中 --toolchain=auto 若不指定，则为默认
 ```
 
 ## 3. 构建项目
