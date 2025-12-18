@@ -3,13 +3,13 @@
 CMake 配合 Vcpkg 提供了强大的依赖管理和跨平台构建能力。
 
 测试过的环境和工具链：
-* Windows + MSVC ✅
-* Windows + MinGW ✅
-* Linux + GCC ✅
-* Linux + Clang ✅
+* Windows + MSVC + STL ✅
+* Windows + MinGW + libstdc++ ✅
+* Linux + GCC + libstdc++✅
+* Linux + Clang + libstdc++✅
 
 待测试的环境
-* Windows + Clang-cl 
+* Windows + Clang-cl + STL
 * Linux + Clang + libc++
 
 ## 1. 安装必要工具
