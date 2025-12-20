@@ -6,11 +6,11 @@
  * well-structured, object-oriented C++23 program.
  *
  * Features:
- * - Robust image alignment using ORB + RANSAC / ECC
- * - Focus measure computation (SML/RDF) with CPU/CUDA acceleration
+ * - Robust image alignment using ORB features and RANSAC
+ * - Focus measure computation (SML) with CPU/CUDA acceleration
  * - Subpixel depth estimation with confidence map
  * - Depth map refinement using guided filter or bilateral filter
- * - Weight-based/Direct fusion for all-in-focus image generation
+ * - Weight-based fusion for all-in-focus image generation
  * - Physical depth conversion
  *
  * @author wwf
@@ -27,12 +27,11 @@
 #include <execution>
 #include <filesystem>
 #include <functional>
-#include <limits>
-#include <ranges>
 
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <ranges>
 #ifdef __cpp_lib_mdspan
 #include <mdspan>
 #endif
@@ -51,6 +50,7 @@
 #include <opencv2/ximgproc.hpp>
 #endif
 
+// #include <nlohmann/json.hpp>
 #include <yaml-cpp/yaml.h>
 
 // CUDA support (conditional)
@@ -65,6 +65,7 @@ namespace fs    = std::filesystem;
 namespace views = std::ranges::views;
 namespace rng   = std::ranges;
 
+
 // ============================================================================
 // Configuration Parameters
 // ============================================================================
@@ -75,16 +76,15 @@ namespace rng   = std::ranges;
  * Format: X(type, name, default_value, description)
  */
 #define DFF_CONFIG_FIELDS                                                                          \
-    X(std::string, config, "default_config.yaml", "Path to config file (yaml)")                    \
     X(bool, useColor, false, "Use rgb image instead of grayscale")                                 \
     X(bool, useCuda, false, "Use CUDA acceleration")                                               \
     X(bool, useEcc, false, "Use ECC alignment")                                                    \
     X(bool, useRDF, false, "Use RDF to compute focus volume")                                      \
-    X(bool, useGuidedFilter, false, "Use guided filter")                                           \
-    X(bool, useFusionRefine, false, "Use weight-based fusion")                                     \
-    X(bool, useParallelExec, false, "Use parallel execution")                                      \
-    X(bool, useInpaint, false, "Use inpainting")                                                   \
-    X(bool, saveData, false, "Save result data to txt")                                            \
+    X(bool, useGuidedFilter, false, "Use guided filter")                                            \
+    X(bool, useFusionRefine, false, "Use weight-based fusion")                                      \
+    X(bool, useParallelExec, false, "Use parallel execution")                                       \
+    X(bool, useInpaint, false, "Use inpainting")                                                    \
+    X(bool, saveData, false, "Save result data to txt")                                             \
     X(int, orbNumFeatures, 1000, "ORB features count")                                             \
     X(double, eccResizeFactor, 0.5, "ECC resize factor")                                           \
     X(int, eccMaxCount, 50, "ECC max count")                                                       \
@@ -105,10 +105,7 @@ namespace rng   = std::ranges;
     X(std::string, outputSubDir, "unified", "Output directory")
 
 /**
- * @brief Depth from Focus (DFF) Pipeline Configuration
- *
- * This structure contains all configurable parameters for the DFF pipeline.
- * Parameters can be loaded from YAML files or command-line arguments.
+ * @brief DFF Pipeline Configuration
  */
 struct DFFConfig
 {
@@ -117,65 +114,37 @@ struct DFFConfig
     DFF_CONFIG_FIELDS
 #undef X
 
-    /**
-     * @brief Register all configuration parameters as command-line arguments
-     * @param parser Command-line parser to register arguments with
-     */
     static void addCommandLineArguments(MyCmdParser& parser)
     {
-#define X(type, name, default_val, doc) parser.addArgument<type>(#name, doc, default_val);
+#define X(type, name, default_val, doc)                                                            \
+    parser.addArgument<type>(#name, doc, default_val);
         DFF_CONFIG_FIELDS
 #undef X
     }
 
     /**
-     * @brief Update configuration from YAML node
-     *
-     * Loads values from a YAML configuration node, overwriting current values.
-     * Invalid or missing fields are logged as warnings.
-     *
-     * @param node YAML node containing configuration values
+     * @brief Deserialize from YAML
      */
-    void updateFromYaml(const YAML::Node& node)
+    static DFFConfig fromYaml(const YAML::Node& node)
+    {
+        DFFConfig config;
+#define X(type, name, default_val, doc)                                                            \
+    if (node[#name]) { config.name = node[#name].as<type>(); }
+        DFF_CONFIG_FIELDS
+#undef X
+        return config;
+    }
+
+    static void yamlToParser(const YAML::Node& node, MyCmdParser& parser)
     {
 #define X(type, name, default_val, doc)                                                            \
-    if (node[#name]) {                                                                             \
-        try {                                                                                      \
-            name = node[#name].as<type>();                                                         \
-        }                                                                                          \
-        catch (...) {                                                                              \
-            Log.warn("Failed to parse YAML field: {}", #name);                                     \
-        }                                                                                          \
-    }
+if (node[#name]) { parser.addArgument<type>(#name, doc, node[#name].as<type>()); }
         DFF_CONFIG_FIELDS
 #undef X
     }
 
     /**
-     * @brief Override configuration from command-line parser
-     *
-     * Only overrides values that were explicitly provided by the user on the
-     * command line, preserving other values from defaults or YAML.
-     *
-     * @param parser Command-line parser with user-provided arguments
-     */
-    void overrideFromCmdParser(const MyCmdParser& parser)
-    {
-#define X(type, name, default_val, doc)                                                            \
-    if (parser.isUserProvided(#name)) {                                                            \
-        if (auto val = parser.getValue<type>(#name); val.has_value()) { name = val.value(); }      \
-    }
-        DFF_CONFIG_FIELDS
-#undef X
-    }
-
-    /**
-     * @brief Serialize configuration to YAML format string
-     *
-     * Converts the entire configuration to a YAML-formatted string,
-     * including comments with parameter descriptions.
-     *
-     * @return YAML string representation of the configuration
+     * @brief Serialize to YAML
      */
     [[nodiscard]] std::string toYaml() const
     {
@@ -186,7 +155,15 @@ struct DFFConfig
         DFF_CONFIG_FIELDS
 #undef X
         out << YAML::EndMap;
-        return out.c_str();
+        return std::string(out.c_str());
+    }
+
+    void overrideFromCmdParser(const MyCmdParser& parser)
+    {
+#define X(type, name, default_val, doc)                                                            \
+    if (auto val = parser.getValue<type>(#name); val.has_value()) { name = val.value(); }
+        DFF_CONFIG_FIELDS
+#undef X
     }
 };
 
@@ -195,14 +172,7 @@ struct DFFConfig
 // ============================================================================
 
 /**
- * @brief Helper to mark OpenCV output parameters (improves readability)
- *
- * This function is a no-op that serves as documentation to indicate
- * which parameters are output parameters in OpenCV function calls.
- *
- * @tparam T Type of the parameter (must be non-const)
- * @param t Reference to the output parameter
- * @return Reference to the same parameter
+ * @brief Helper to specify OpenCV output parameters (improves readability)
  */
 template <typename T>
     requires(!std::is_const_v<T>)
@@ -210,18 +180,6 @@ template <typename T>
 {
     return t;
 }
-
-/**
- * @brief Dispatch operation with parallel or sequential execution
- *
- * This helper function conditionally executes an operation using either
- * parallel or sequential execution policy based on a runtime flag.
- *
- * @tparam Op Operation type (callable with execution policy)
- * @param useParallel If true, use parallel execution; otherwise sequential
- * @param op Operation to execute
- * @return Result of the operation
- */
 template <typename Op>
 auto parallel_dispatch(bool useParallel, Op&& op)
 {
@@ -233,27 +191,11 @@ auto parallel_dispatch(bool useParallel, Op&& op)
 // Filter Implementations (CPU fallback when OpenCV ximgproc unavailable)
 // ============================================================================
 /**
- * @brief Guided Filter for edge-preserving smoothing
- *
- * The guided filter is an edge-preserving filter that uses a guidance image
- * to determine filtering behavior. It's particularly effective for depth
- * refinement as it preserves edges from the all-in-focus image.
+ * @brief Custom Guided Filter implementation
  */
 class GuidedFilter
 {
 public:
-    /**
-     * @brief Apply guided filter
-     *
-     * Uses OpenCV's ximgproc implementation if available, otherwise falls
-     * back to a manual CPU implementation.
-     *
-     * @param guide Guidance image (typically the all-in-focus image)
-     * @param src Source image to filter (depth map)
-     * @param radius Filter radius (window size = 2*radius + 1)
-     * @param eps Regularization parameter (controls edge preservation)
-     * @return Filtered image
-     */
     static cv::Mat apply(const cv::Mat& guide, const cv::Mat& src, int radius, double eps)
     {
 #ifdef HAVE_OPENCV_XIMGPROC
@@ -266,18 +208,6 @@ public:
     }
 
 private:
-    /**
-     * @brief Manual CPU implementation of guided filter
-     *
-     * Implements the guided filter algorithm using basic OpenCV operations.
-     * Used as fallback when ximgproc module is not available.
-     *
-     * @param I Guidance image
-     * @param p Input image to filter
-     * @param r Filter radius
-     * @param eps Regularization parameter
-     * @return Filtered image
-     */
     static cv::Mat applyManual(const cv::Mat& I, const cv::Mat& p, int r, double eps)
     {
         // Convert to float for precision
@@ -293,10 +223,10 @@ private:
         cv::Mat meanP;
         cv::Mat meanII;
         cv::Mat meanIp;
-        cv::boxFilter(imageFloat, CVOutput(meanI), CV_32F, winSize);
-        cv::boxFilter(pf, CVOutput(meanP), CV_32F, winSize);
-        cv::boxFilter(imageFloat.mul(imageFloat), CVOutput(meanII), CV_32F, winSize);
-        cv::boxFilter(imageFloat.mul(pf), CVOutput(meanIp), CV_32F, winSize);
+        cv::boxFilter(imageFloat, meanI, CV_32F, winSize);
+        cv::boxFilter(pf, meanP, CV_32F, winSize);
+        cv::boxFilter(imageFloat.mul(imageFloat), meanII, CV_32F, winSize);
+        cv::boxFilter(imageFloat.mul(pf), meanIp, CV_32F, winSize);
 
         // Compute variance and covariance
         cv::Mat varI   = meanII - meanI.mul(meanI);
@@ -305,14 +235,14 @@ private:
         // Compute linear coefficients
         cv::Mat a;
         cv::Mat b;
-        cv::divide(convIp, varI + eps, CVOutput(a));
+        cv::divide(convIp, varI + eps, a);
         b = meanP - a.mul(meanI);
 
         // Average coefficients
         cv::Mat meanA;
         cv::Mat meanB;
-        cv::boxFilter(a, CVOutput(meanA), CV_32F, winSize);
-        cv::boxFilter(b, CVOutput(meanB), CV_32F, winSize);
+        cv::boxFilter(a, meanA, CV_32F, winSize);
+        cv::boxFilter(b, meanB, CV_32F, winSize);
 
         // Generate output
         cv::Mat qF = meanA.mul(imageFloat) + meanB;
@@ -327,27 +257,11 @@ private:
 };
 
 /**
- * @brief Joint Bilateral Filter for edge-preserving smoothing
- *
- * The joint bilateral filter combines spatial and range filtering using
- * a guidance image. It smooths regions while preserving edges from the guide.
+ * @brief Custom Joint Bilateral Filter implementation
  */
 class JointBilateralFilter
 {
 public:
-    /**
-     * @brief Apply joint bilateral filter
-     *
-     * Uses OpenCV's ximgproc implementation if available, otherwise falls
-     * back to a manual CPU implementation.
-     *
-     * @param guide Guidance image (typically the all-in-focus image)
-     * @param src Source image to filter (depth map)
-     * @param d Filter diameter (window size)
-     * @param sigmaColor Filter sigma in the color space
-     * @param sigmaSpace Filter sigma in the coordinate space
-     * @return Filtered image
-     */
     static cv::Mat
     apply(const cv::Mat& guide, const cv::Mat& src, int d, double sigmaColor, double sigmaSpace)
     {
@@ -366,19 +280,6 @@ public:
     }
 
 private:
-    /**
-     * @brief Manual CPU implementation of joint bilateral filter
-     *
-     * Implements the joint bilateral filter using basic operations.
-     * Used as fallback when ximgproc module is not available.
-     *
-     * @param guide Guidance image
-     * @param src Input image to filter
-     * @param d Filter diameter
-     * @param sigmaColor Filter sigma in color space
-     * @param sigmaSpace Filter sigma in coordinate space
-     * @return Filtered image
-     */
     static cv::Mat applyManual(
         const cv::Mat& guide, const cv::Mat& src, int d, double sigmaColor, double sigmaSpace)
     {
@@ -389,7 +290,7 @@ private:
         // Precompute color weights LUT
         double gaussColorCoeff = -0.5 / (sigmaColor * sigmaColor);
         auto colorWeights
-            = views::iota(0, std::numeric_limits<unsigned char>::max() + 1)
+            = views::iota(0, 256)
               | views::transform([&](int i) -> float { return std::expf(i * i * gaussColorCoeff); })
               | rng::to<std::vector<float>>();
 
@@ -465,7 +366,7 @@ private:
  *
  * This class encapsulates the complete DFF workflow:
  * 1. Image Alignment
- * 2. Focus Measure Computation
+ * 2. Focus Measure Computation (SML)
  * 3. Depth Estimation with Confidence
  * 4. Depth Refinement
  * 5. Physical Depth Conversion
@@ -531,7 +432,6 @@ public:
 
         std::vector<std::future<bool>> saveFutures;
 
-        // save matrices as txt
         if (config_.saveData) {
             // save refined depth index
             saveFutures.emplace_back(std::async(std::launch::async, [this, outputDir]() {
@@ -637,15 +537,7 @@ private:
     }
 
     /**
-     * @brief Step 1: Align image stack using feature matching or ECC
-     *
-     * Aligns all images in the stack to a reference image (middle frame).
-     * Supports two alignment methods:
-     * - ORB feature matching with RANSAC (default)
-     * - Enhanced Correlation Coefficient (ECC) maximization
-     *
-     * @param inputImages Input image stack (BGR or grayscale)
-     * @return true if alignment succeeded
+     * @brief Step 1: Align image stack using ORB features and RANSAC
      */
     bool alignImages(std::span<const cv::Mat> inputImages)
     {
@@ -685,16 +577,6 @@ private:
         Log.info("Image alignment completed");
         return true;
     }
-
-    /**
-     * @brief Align images using ORB feature matching and RANSAC
-     *
-     * Detects ORB features in all images, matches them to the reference,
-     * and computes homography transformations using RANSAC for robustness.
-     *
-     * @param inputImages Input image stack
-     * @param refIndex Index of the reference image
-     */
     void alignByFeatures(std::span<const cv::Mat> inputImages, size_t refIndex)
     {
         cv::Mat refGray;
@@ -776,21 +658,12 @@ private:
         }
     }
 
-    /**
-     * @brief Align images using Enhanced Correlation Coefficient (ECC)
-     *
-     * Uses iterative ECC maximization to align images. This method is often
-     * more robust than feature matching for smooth transformations.
-     *
-     * @param inputImages Input image stack
-     * @param refIndex Index of the reference image
-     */
     void alignByECC(std::span<const cv::Mat> inputImages, size_t refIndex)
     {
         auto resizeFactor = static_cast<float>(config_.eccResizeFactor);
         cv::Mat refGray;
         if (inputImages[refIndex].channels() == 3) {
-            cv::cvtColor(inputImages[refIndex], CVOutput(refGray), cv::COLOR_BGR2GRAY);
+            cv::cvtColor(inputImages[refIndex], refGray, cv::COLOR_BGR2GRAY);
         }
         else {
             refGray = inputImages[refIndex].clone();
@@ -799,7 +672,7 @@ private:
 
         cv::Mat refSmall;
         // Resize for speed
-        cv::resize(refGray, CVOutput(refSmall), cv::Size(), resizeFactor, resizeFactor);
+        cv::resize(refGray, refSmall, cv::Size(), resizeFactor, resizeFactor);
 
         cv::Mat H             = cv::Mat::eye(3, 3, CV_32F);
         cv::Mat S             = cv::Mat::eye(3, 3, CV_32F);
@@ -814,7 +687,7 @@ private:
 
             cv::Mat currGray;
             if (inputImages[i].channels() == 3) {
-                cv::cvtColor(inputImages[i], CVOutput(currGray), cv::COLOR_BGR2GRAY);
+                cv::cvtColor(inputImages[i], currGray, cv::COLOR_BGR2GRAY);
             }
             else {
                 currGray = inputImages[i].clone();
@@ -826,7 +699,7 @@ private:
                 cv::findTransformECC(
                     currSmall,
                     refSmall,
-                    CVOutput(H),
+                    H,
                     cv::MOTION_HOMOGRAPHY,
 
                     cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS,
@@ -838,7 +711,7 @@ private:
 
                 Log.debug("warp perspective for image {}.", i);
                 cv::warpPerspective(inputImages[i],
-                                    CVOutput(alignedImages_[i]),
+                                    alignedImages_[i],
                                     H_full,
                                     imageSize_,
                                     cv::INTER_LINEAR + cv::WARP_INVERSE_MAP);
@@ -854,16 +727,7 @@ private:
     }
 
     /**
-     * @brief Step 2: Compute focus volume using SML or RDF
-     *
-     * Computes focus measures for each image in the aligned stack.
-     * Supports two focus measure methods:
-     * - Sum of Modified Laplacian (SML) - default, faster
-     * - Ring Difference Filter (RDF) - alternative method
-     *
-     * Can use CUDA acceleration if available and enabled.
-     *
-     * @return true if focus volume computation succeeded
+     * @brief Step 2: Compute focus volume using SML (CPU or CUDA)
      */
     bool computeFocusVolume()
     {
@@ -872,7 +736,7 @@ private:
         if (config_.useRDF) {
             if (config_.useCuda) {
 #ifdef USE_CUDA
-                auto rdfKernel = generateRDFKernel(config_.rdfInnerR, config_.rdfOuterR);
+                auto rdfKernel = generate_RDF_kernel(config_.rdfInnerR, config_.rdfOuterR);
                 focusVolume_   = rdf_cuda(alignedImages_, rdfKernel);
                 Log.info("RDF: Focus volume computed using CUDA");
                 return true;
@@ -882,27 +746,21 @@ private:
             }
             return rdfCpu();
         }
-        if (config_.useCuda) {
+        else {
+            if (config_.useCuda) {
 #ifdef USE_CUDA
-            focusVolume_ = sml_cuda(alignedImages_, config_.smlWindowSize);
-            Log.info("SML: Focus volume computed using CUDA");
-            return true;
+                focusVolume_ = sml_cuda(alignedImages_, config_.smlWindowSize);
+                Log.info("SML: Focus volume computed using CUDA");
+                return true;
 #else
-            Log.warn("CUDA support not available, falling back to CPU implementation");
+                Log.warn("CUDA support not available, falling back to CPU implementation");
 #endif
+            }
+            return sml_cpu();
         }
-        return smlCPU();
     }
 
-    /**
-     * @brief Compute Sum of Modified Laplacian (SML) focus measure on CPU
-     *
-     * SML applies modified Laplacian kernels in X and Y directions, takes
-     * absolute values, sums them, and applies local averaging.
-     *
-     * @return true if computation succeeded
-     */
-    bool smlCPU()
+    bool sml_cpu()
     {
         // CPU implementation
         focusVolume_.resize(numImages_);
@@ -943,7 +801,7 @@ private:
 
             // Box filter for SML
             cv::boxFilter(filtered,
-                          CVOutput(filtered),
+                          filtered,
                           floatType,
                           smlWindow,
                           cv::Point(-1, -1),
@@ -962,18 +820,10 @@ private:
         return true;
     }
 
-    /**
-     * @brief Compute Ring Difference Filter (RDF) focus measure on CPU
-     *
-     * RDF uses a ring-shaped kernel to detect edges and texture.
-     * The kernel has a positive center and negative surrounding ring.
-     *
-     * @return true if computation succeeded
-     */
     bool rdfCpu()
     {
         focusVolume_.resize(numImages_);
-        auto rdfKernel = generateRDFKernel(config_.rdfInnerR, config_.rdfOuterR);
+        auto rdfKernel = generate_RDF_kernel(config_.rdfInnerR, config_.rdfOuterR);
 
         for (std::size_t i = 0; i < numImages_; ++i) {
             // Convert to float
@@ -1000,13 +850,7 @@ private:
     }
 
     /**
-     * @brief Step 3: Estimate subpixel depth and confidence using parabolic fitting
-     *
-     * For each pixel, finds the focus slice with maximum focus measure,
-     * then performs parabolic interpolation using neighboring slices for
-     * subpixel depth accuracy. Confidence is computed from the peak sharpness.
-     *
-     * @return true if depth estimation succeeded
+     * @brief Step 3: Estimate subpixel depth and confidence
      */
     bool estimateDepthAndConfidence()
     {
@@ -1077,14 +921,7 @@ private:
     }
 
     /**
-     * @brief Step 4: Refine depth map using edge-preserving filtering
-     *
-     * Applies guided filter or joint bilateral filter to smooth the depth
-     * map while preserving edges from the all-in-focus image.
-     * Also generates the all-in-focus image using either direct indexing
-     * or weight-based fusion.
-     *
-     * @return true if refinement succeeded
+     * @brief Step 4: Refine depth map using guided/bilateral filter
      */
     bool refineDepthMap()
     {
@@ -1112,7 +949,7 @@ private:
         cv::Mat blurredDepth;
         cv::Size ksize(config_.refinedGaussKSize, config_.refinedGaussKSize);
         if (config_.refinedGaussKSize > 0) {
-            cv::GaussianBlur(depthIndexMap_, CVOutput(blurredDepth), ksize, 0);
+            cv::GaussianBlur(depthIndexMap_, blurredDepth, ksize, 0);
         }
         else {
             blurredDepth = depthIndexMap_.clone();
@@ -1141,13 +978,7 @@ private:
     }
 
     /**
-     * @brief Generate all-in-focus image using direct pixel indexing
-     *
-     * For each pixel, selects the pixel value from the image slice
-     * corresponding to the depth index at that location.
-     *
-     * @tparam ElementType Pixel type (uchar for grayscale, cv::Vec3b for color)
-     * @return All-in-focus image
+     * @brief Generate all-in-focus image using direct indexing
      */
     template <typename ElementType>
     [[nodiscard]] cv::Mat generateAllInFocusDirect() const
@@ -1179,12 +1010,6 @@ private:
 
     /**
      * @brief Generate all-in-focus image using weight-based fusion
-     *
-     * Blends all images using focus measures as weights. Produces smoother
-     * results than direct indexing but may be slightly less sharp.
-     *
-     * @tparam ElementType Pixel type (uchar for grayscale, cv::Vec3b for color)
-     * @return All-in-focus image
      */
     template <typename ElementType>
     [[nodiscard]] cv::Mat generateAllInFocusWithFusion() const
@@ -1239,10 +1064,7 @@ private:
     }
 
     /**
-     * @brief Inpaint low-confidence regions in the depth map
-     *
-     * Identifies unreliable regions based on confidence threshold and
-     * fills them using OpenCV's inpainting algorithm.
+     * @brief Inpaint low-confidence regions in depth map
      */
     void inpaintLowConfidenceRegions()
     {
@@ -1263,13 +1085,7 @@ private:
     }
 
     /**
-     * @brief Step 5: Convert depth indices to physical depth values
-     *
-     * Converts the refined depth index map (float indices into the image stack)
-     * to physical depth values in millimeters using linear interpolation
-     * between the physical distances array.
-     *
-     * @return true if conversion succeeded
+     * @brief Step 5: Convert depth index to physical depth
      */
     bool convertToPhysicalDepth()
     {
@@ -1306,13 +1122,6 @@ private:
 
     /**
      * @brief Save a cv::Mat to a text file
-     *
-     * Saves matrix data in space-separated text format.
-     * Uses std::mdspan if available for more efficient access.
-     *
-     * @param mat Matrix to save (must be CV_32F)
-     * @param filepath Output file path
-     * @return true if save succeeded
      */
     [[nodiscard]] static bool saveMatToTxt(const cv::Mat& mat, const fs::path& filepath)
     {
@@ -1345,17 +1154,7 @@ private:
         return true;
     }
 
-    /**
-     * @brief Generate Ring Difference Filter (RDF) kernel
-     *
-     * Creates a ring-shaped filter kernel with a positive center and
-     * negative surrounding ring. The ring extends from innerRadius to outerRadius.
-     *
-     * @param inner Inner radius of the ring
-     * @param outer Outer radius of the ring
-     * @return RDF kernel matrix (CV_32F)
-     */
-    static cv::Mat generateRDFKernel(int inner, int outer)
+    static cv::Mat generate_RDF_kernel(int inner, int outer)
     {
         int innerRadius = inner;
         int outerRadius = outer;
@@ -1387,76 +1186,73 @@ private:
 // ============================================================================
 // Main Function
 // ============================================================================
-
-/**
- * @brief Main entry point for the Depth from Focus pipeline
- *
- * Workflow:
- * 1. Parse command-line arguments and load configuration
- * 2. Load image stack from disk
- * 3. Run DFF pipeline (alignment, focus computation, depth estimation, refinement)
- * 4. Save results to disk
- *
- * @param argc Argument count
- * @param argv Argument vector
- * @return 0 on success, -1 on error
- */
+// TODO: parser 在 命令行和输入配置文件之间的优先级问题，依然很混乱
 int main(int argc, char** argv)
 {
     // === Configuration ===
     DFFConfig config;
-
+    
+    // Command-line overrides
+    std::string configFile;
+    std::string imageDirectory;
+    std::string outputDirectory;
+    
     // Create command-line parser
-    MyCmdParser parser(
-        "final_project",
+    MyCmdParser parser("final_project", 
         "Unified Depth from Focus (DFF) Pipeline - High-quality depth estimation from focus stacks");
-
-    DFFConfig::addCommandLineArguments(parser);
+    
+    config.addCommandLineArguments(parser);
 
     // Parse arguments
     if (!parser.parse(argc, argv)) {
         return 0; // Help was shown or parse error
     }
-    std::string configName = config.config;
-    if (parser.isUserProvided("config")) {
-        configName = parser.getValue<std::string>("config").value();
-    }
-    auto configDir = fs::path(SOURCE_DIR) / "configs";
-    if (auto configPath = configDir / configName; fs::exists(configPath)) {
+    
+    // Load config file if specified
+    if (!configFile.empty()) {
         try {
-            Log.info("Loading configuration from: {}", configPath.string());
+            fs::path configPath = configFile;
+            if (!configPath.is_absolute()) {
+                configPath = fs::path(SOURCE_DIR) / "configs" / configFile;
+            }
+            
             YAML::Node node = YAML::LoadFile(configPath.string());
-
-            // 将 YAML 中的值更新到 config 对象中
-            config.updateFromYaml(node);
+            DFFConfig::yamlToParser(node, parser);
+            Log.info("Loaded configuration from: {}", configPath.string());
         }
-        catch (const std::exception& e) {
-            Log.error("Error reading configuration file '{}': {}", configPath.string(), e.what());
-            if (parser.isUserProvided("config")) return -1;
-        }
-    }
-    else {
-        if (parser.isUserProvided("config")) {
-            Log.error("Specified config file not found: {}", configPath.string());
+        catch (const YAML::Exception& e) {
+            Log.error("YAML parsing error in configuration file: {}", e.what());
             return -1;
         }
-        Log.info("No config file found at '{}', using defaults.", configPath.string());
+        catch (const std::exception& e) {
+            Log.error("Error reading configuration file: {}", e.what());
+            return -1;
+        }
     }
-    // CLI Overrides Config File & Defaults
+    
+    // Determine image directory
+    fs::path imageDir;
+    if (!imageDirectory.empty()) {
+        imageDir = imageDirectory;
+    } else {
+        imageDir = fs::path(IMAGE_DIR) / "project_imgs";
+    }
+    
+    // Determine output directory
+    fs::path resultDir;
+    if (!outputDirectory.empty()) {
+        resultDir = outputDirectory;
+    } else {
+        resultDir = fs::path(PROJECT_ROOT) / "results" / "project" / config.outputSubDir;
+    }
+
     config.overrideFromCmdParser(parser);
 
-    // Determine image directory
-    auto imageDir = fs::path(IMAGE_DIR) / "project_imgs";
-
-    // Determine output directory
-
-    auto resultDir = fs::path(PROJECT_ROOT) / "results" / "project" / config.outputSubDir;
+    // === Paths ===
     if (!fs::exists(imageDir)) {
         Log.error("Image directory not found: {}", imageDir.string());
         return -1;
     }
-
-    // === Paths ===
     // make sure result directory exists
     if (!fs::exists(resultDir)) { fs::create_directories(resultDir); }
 

@@ -7,10 +7,10 @@ CMake 配合 Vcpkg 提供了强大的依赖管理和跨平台构建能力。
 * Windows + MinGW + libstdc++ ✅
 * Linux + GCC + libstdc++✅
 * Linux + Clang + libstdc++✅
+* Linux + Clang + libc++ ✅ （只能手动安装opencv，见[下文](#若系统已安装了-opencv)）
 
 待测试的环境
 * Windows + Clang-cl + STL
-* Linux + Clang + libc++
 
 ## 1. 安装必要工具
 
@@ -97,6 +97,9 @@ cmake --preset clang-release
 cmake --preset  clang-libc++-release
 # 指定 Vcpkg 工具链（如果没有设置 VCPKG_ROOT）
 cmake --preset x64-release -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+# 启动 CUDA 支持（如果当前 CUDA 版本和编译器不匹配，启动了也不会支持）
+cmake --preset your_preset_name  -DENABLE_CUDA=ON
 ```
 
 ⚠️: 使用 clang + libc++ 构建 vcpkg 下载的包并不是显然的，需要专门编写自定义的 triplets，目前还没有测试过。谨慎处理。
@@ -106,11 +109,11 @@ cmake --preset x64-release -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg/scripts/buildsy
 
 ### 若系统已安装了 OpenCV
 
-考虑到一些Linux 发行版系统库自带 OpenCV（比如 `Ubuntu`），以及一些用户在Windows下已经下载了 OpenCV 库，我们可以跳过OpenCV 漫长的下载和编译。直接链接。
+考虑到一些Linux 发行版系统库自带 OpenCV（比如 `Ubuntu`），以及一些用户在Windows下已经下载了 OpenCV 库，我们可以跳过vcpkg 漫长的下载和编译。直接链接。(**注意**：绕过vcpkg，就意味着另一个轻量级的库`YAML_CPP`也不能用vcpkg安装，好在我们可以直接通过cmake安装，因此上述构建的时候必须带有 `-DUSE_INTERNAL_YAML_CPP=ON` 标识)
 
 #### 如果 OpenCV 库已经在系统环境变量上
 
-1. 删除 [vcpkg.json](../vcpkg.json) 中 `opencv4` 这一行即可。
+1. 取消 [CMakeLists.txt](../CMakeLists.txt) 中 `unset(CMAKE_TOOLCHAIN_FILE CACHE)` 这一行注释。
 
 注意：**在环境变量**中指的是类似(Windows)`opencv\build`( 用于 Cmake
  查找) 和 类似 `opencv\build\x64\vc16\bin` (用于程序动态链接) 都在 环境变量下。两者缺一不可。
@@ -132,9 +135,8 @@ env | grep -i opencv
 #### 如果 OpenCV 库下载了但是不在环境变量
 
 如果下载了 OpenCV 库，但是不想 *污染* 环境变量，可以：
-1. 删除 vcpkg.json 中 opencv4 这一行。
-2. 设置 [CmakeLists.txt](../CMakeLists.txt) 中 的 `MANUAL_OpenCV_DIR` 变量指定 `opencv/build` 目录
-3. 设置 [CmakeLists.txt](../CMakeLists.txt) 中 的 `MANUAL_OpenCV_BIN` 变量指定 `bin` 目录
+1. 取消 [CMakeLists.txt](../CMakeLists.txt) 中 `unset(CMAKE_TOOLCHAIN_FILE CACHE)` 这一行注释。
+2. 设置 [CmakeLists.txt](../CMakeLists.txt) 中 的 `MANUAL_OpenCV_DIR` 变量指定 `opencv/build` 目录（或者其他 存在 `OpenCVConfig.cmake` 的目录）
 
 然后按照上述要求构建即可。
 
