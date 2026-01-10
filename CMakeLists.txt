@@ -150,10 +150,9 @@ if(CUDA_FOUND)
 endif()
 
 # ==============================================================================
-# 5. [核心修改] Utility Functions: Smart DLL Copy
+# 5. Utility Functions: Smart DLL Copy
 # ==============================================================================
 
-# 我们将在构建目录生成一个辅助脚本，用于在运行时检查 PATH 并复制
 set(COPY_SCRIPT_FILE "${CMAKE_BINARY_DIR}/cmake/CopyDllsIfMissing.cmake")
 file(WRITE "${COPY_SCRIPT_FILE}" "
 # 这是一个构建时运行的脚本
