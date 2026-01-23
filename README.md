@@ -128,21 +128,21 @@ outputSubDir: unified        # 结果输出子目录
 ./final_project --config my_config.yaml
 
 # 启用 CUDA 加速
-./final_project --useCuda true
+./final_project --useCuda
 
 # 启用彩色图像处理
-./final_project --useColor true
+./final_project --useColor
 
 # 使用 ECC 对齐
-./final_project --useEcc true
+./final_project --useEcc
 
 # 使用 RDF 聚焦度量
-./final_project --useRDF true
+./final_project --useRDF
 
 # 组合多个参数
 ./final_project \
   --config custom.yaml \
-  --useCuda true \
+  --useCuda \
   --useParallelExec true \
   --outputSubDir my_results
 ```
