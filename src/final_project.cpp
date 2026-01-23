@@ -23,14 +23,17 @@
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <execution>
 #include <filesystem>
+#include <format>
 #include <functional>
 
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <optional>
 #include <ranges>
 #ifdef __cpp_lib_mdspan
 #include <mdspan>
@@ -65,7 +68,6 @@ namespace fs    = std::filesystem;
 namespace views = std::ranges::views;
 namespace rng   = std::ranges;
 
-
 // ============================================================================
 // Configuration Parameters
 // ============================================================================
@@ -75,33 +77,37 @@ namespace rng   = std::ranges;
  *
  * Format: X(type, name, default_value, description)
  */
-#define DFF_CONFIG_FIELDS                                                                          \
-    X(bool, useColor, false, "Use rgb image instead of grayscale")                                 \
-    X(bool, useCuda, false, "Use CUDA acceleration")                                               \
-    X(bool, useEcc, false, "Use ECC alignment")                                                    \
-    X(bool, useRDF, false, "Use RDF to compute focus volume")                                      \
-    X(bool, useGuidedFilter, false, "Use guided filter")                                            \
-    X(bool, useFusionRefine, false, "Use weight-based fusion")                                      \
-    X(bool, useParallelExec, false, "Use parallel execution")                                       \
-    X(bool, useInpaint, false, "Use inpainting")                                                    \
-    X(bool, saveData, false, "Save result data to txt")                                             \
-    X(int, orbNumFeatures, 1000, "ORB features count")                                             \
-    X(double, eccResizeFactor, 0.5, "ECC resize factor")                                           \
-    X(int, eccMaxCount, 50, "ECC max count")                                                       \
-    X(double, eccEpsilon, 1e-4, "ECC epsilon")                                                     \
-    X(int, smlWindowSize, 5, "SML window size (Only used when useRDF is false)")                   \
-    X(int, rdfOuterR, 3, "RDF outer radius")                                                       \
-    X(int, rdfInnerR, 1, "RDF inner radius")                                                       \
-    X(double, ransacThreshold, 5.0, "RANSAC threshold")                                            \
-    X(int, refinedGaussKSize, 5, "Blur kernel size in refined depth map")                          \
-    X(int, fusionGaussKSize, 7, "Blur kernel size in fusion all in focus image")                   \
-    X(int, guidedFilterRadius, 8, "Guided filter radius")                                          \
-    X(double, guidedFilterEps, 0.01, "Guided filter eps")                                          \
-    X(int, bilateralFilterD, 9, "Bilateral diameter")                                              \
-    X(double, bilateralSigmaColor, 10.0, "Bilateral color sigma")                                  \
-    X(double, bilateralSigmaSpace, 5.0, "Bilateral space sigma")                                   \
-    X(float, physicalDepthStart, 1.0f, "Start distance (mm)")                                      \
-    X(float, physicalDepthStep, 2.0f, "Step distance (mm)")                                        \
+#define DFF_CONFIG_FIELDS                                                                                                   \
+    X(bool, useColor, false, "Use rgb image instead of grayscale")                                                          \
+    X(bool, useCuda, false, "Use CUDA acceleration")                                                                        \
+    X(bool, useEcc, false, "Use ECC alignment")                                                                             \
+    X(bool, useRDF, false, "Use RDF to compute focus volume")                                                               \
+    X(bool, useGuidedFilter, false, "Use guided filter")                                                                    \
+    X(bool, useFusionRefine, false, "Use weight-based fusion")                                                              \
+    X(bool, useParallelExec, false, "Use parallel execution")                                                               \
+    X(bool, useInpaint, false, "Use inpainting")                                                                            \
+    X(bool, saveData, false, "Save result data to txt")                                                                     \
+    X(int, orbNumFeatures, 1000, "ORB features count")                                                                      \
+    X(double, eccResizeFactor, 0.5, "ECC resize factor")                                                                    \
+    X(int, eccMaxCount, 50, "ECC max count")                                                                                \
+    X(double, eccEpsilon, 1e-4, "ECC epsilon")                                                                              \
+    X(int, smlWindowSize, 5, "SML window size (Only used when useRDF is false)")                                            \
+    X(int, rdfOuterR, 3, "RDF outer radius")                                                                                \
+    X(int, rdfInnerR, 1, "RDF inner radius")                                                                                \
+    X(double, ransacThreshold, 5.0, "RANSAC threshold")                                                                     \
+    X(int, refinedGaussKSize, 5, "Blur kernel size in refined depth map")                                                   \
+    X(int, fusionGaussKSize, 7, "Blur kernel size in fusion all in focus image")                                            \
+    X(int, guidedFilterRadius, 8, "Guided filter radius")                                                                   \
+    X(double, guidedFilterEps, 0.01, "Guided filter eps")                                                                   \
+    X(int, bilateralFilterD, 9, "Bilateral diameter")                                                                       \
+    X(double, bilateralSigmaColor, 10.0, "Bilateral color sigma")                                                           \
+    X(double, bilateralSigmaSpace, 5.0, "Bilateral space sigma")                                                            \
+    X(float, physicalDepthStart, 1.0f, "Start distance (mm)")                                                               \
+    X(float, physicalDepthStep, 2.0f, "Step distance (mm)")                                                                 \
+    X(std::string,                                                                                                          \
+      imageDir,                                                                                                             \
+      "project_imgs",                                                                                                       \
+      "input images directory (If it is not an absolute path, the input path should be relative to the current ./images.)") \
     X(std::string, outputSubDir, "unified", "Output directory")
 
 /**
@@ -116,8 +122,7 @@ struct DFFConfig
 
     static void addCommandLineArguments(MyCmdParser& parser)
     {
-#define X(type, name, default_val, doc)                                                            \
-    parser.addArgument<type>(#name, doc, default_val);
+#define X(type, name, default_val, doc) parser.addArgument<type>(#name, doc, default_val);
         DFF_CONFIG_FIELDS
 #undef X
     }
@@ -125,7 +130,7 @@ struct DFFConfig
     /**
      * @brief Deserialize from YAML
      */
-    static DFFConfig fromYaml(const YAML::Node& node)
+    [[nodiscard]] static DFFConfig fromYaml(const YAML::Node& node)
     {
         DFFConfig config;
 #define X(type, name, default_val, doc)                                                            \
@@ -138,7 +143,7 @@ struct DFFConfig
     static void yamlToParser(const YAML::Node& node, MyCmdParser& parser)
     {
 #define X(type, name, default_val, doc)                                                            \
-if (node[#name]) { parser.addArgument<type>(#name, doc, node[#name].as<type>()); }
+    if (node[#name]) { parser.addArgument<type>(#name, doc, node[#name].as<type>()); }
         DFF_CONFIG_FIELDS
 #undef X
     }
@@ -1189,75 +1194,63 @@ private:
 // TODO: parser 在 命令行和输入配置文件之间的优先级问题，依然很混乱
 int main(int argc, char** argv)
 {
-    // === Configuration ===
-    DFFConfig config;
-    
-    // Command-line overrides
-    std::string configFile;
-    std::string imageDirectory;
-    std::string outputDirectory;
-    
     // Create command-line parser
-    MyCmdParser parser("final_project", 
+    MyCmdParser parser(
+        "final_project",
         "Unified Depth from Focus (DFF) Pipeline - High-quality depth estimation from focus stacks");
-    
-    config.addCommandLineArguments(parser);
+
+    parser.addArgument<std::string>("config", "Path to configuration file");
+
+    DFFConfig::addCommandLineArguments(parser);
 
     // Parse arguments
     if (!parser.parse(argc, argv)) {
         return 0; // Help was shown or parse error
     }
-    
-    // Load config file if specified
-    if (!configFile.empty()) {
-        try {
-            fs::path configPath = configFile;
-            if (!configPath.is_absolute()) {
-                configPath = fs::path(SOURCE_DIR) / "configs" / configFile;
-            }
-            
-            YAML::Node node = YAML::LoadFile(configPath.string());
-            DFFConfig::yamlToParser(node, parser);
-            Log.info("Loaded configuration from: {}", configPath.string());
-        }
-        catch (const YAML::Exception& e) {
-            Log.error("YAML parsing error in configuration file: {}", e.what());
-            return -1;
-        }
-        catch (const std::exception& e) {
-            Log.error("Error reading configuration file: {}", e.what());
-            return -1;
-        }
-    }
-    
-    // Determine image directory
-    fs::path imageDir;
-    if (!imageDirectory.empty()) {
-        imageDir = imageDirectory;
-    } else {
-        imageDir = fs::path(IMAGE_DIR) / "project_imgs";
-    }
-    
-    // Determine output directory
-    fs::path resultDir;
-    if (!outputDirectory.empty()) {
-        resultDir = outputDirectory;
-    } else {
-        resultDir = fs::path(PROJECT_ROOT) / "results" / "project" / config.outputSubDir;
-    }
 
-    config.overrideFromCmdParser(parser);
+    DFFConfig config;
 
-    // === Paths ===
-    if (!fs::exists(imageDir)) {
-        Log.error("Image directory not found: {}", imageDir.string());
+    /// === Config Preparation ===
+    // 1. Load config file if specified (if not, automatically load from default_config.yaml)
+    auto configFile
+        = parser.getValue<std::string>("config")
+              .or_else([]() -> std::optional<std::string> { return "default_config.yaml"; })
+              .value();
+    try {
+        fs::path configPath = configFile;
+        if (!configPath.is_absolute()) {
+            configPath = fs::path(SOURCE_DIR) / "configs" / configFile;
+        }
+
+        YAML::Node node = YAML::LoadFile(configPath.string());
+        // DFFConfig::yamlToParser(node, parser);
+        config = DFFConfig::fromYaml(node);
+        Log.info("Loaded configuration from: {}", configPath.string());
+    }
+    catch (const YAML::Exception& e) {
+        Log.error("YAML parsing error in configuration file: {}", e.what());
         return -1;
     }
+    catch (const std::exception& e) {
+        Log.error("Error reading configuration file: {}", e.what());
+        return -1;
+    }
+    // 2. overwrite from commandline
+    config.overrideFromCmdParser(parser);
+
+    /// === Now Config is Prepared.===
+
+    // === Save Final Config To Yaml ===
+    std::string configYaml = config.toYaml();
+    Log.info("Configuration Details:\n{}\n", configYaml);
+    auto curr_time = std::chrono::zoned_time { "Asia/Shanghai",
+                                               std::chrono::time_point_cast<std::chrono::seconds>(
+                                                   std::chrono::system_clock::now()) };
+    auto resultDir = fs::path(PROJECT_ROOT) / "results" / config.outputSubDir
+                     / std::format("{:%Y-%m-%d_%H-%M-%S}", curr_time);
+
     // make sure result directory exists
     if (!fs::exists(resultDir)) { fs::create_directories(resultDir); }
-
-    std::string configYaml = config.toYaml();
-    Log.info("Configuration Details:\n{}", configYaml);
     std::ofstream configOut(resultDir / "config_used.yaml");
     configOut << configYaml;
     configOut.close();
@@ -1265,7 +1258,14 @@ int main(int argc, char** argv)
     Log.info("=== Unified Depth from Focus Pipeline ===");
 
     // === Load Images ===
-    Log.setLevel(LogLevel::DEBUG);
+    // Log.setLevel(LogLevel::DEBUG);
+    auto imageDir = fs::path(config.imageDir);
+    if (!imageDir.is_absolute()) { imageDir = IMAGE_DIR / imageDir; }
+    if (!fs::exists(imageDir)) {
+        Log.error("Image directory not found: {}", imageDir.string());
+        return -1;
+    }
+
     Log.info("Loading images from: {}", imageDir.string());
 
     auto imagePaths
@@ -1276,15 +1276,17 @@ int main(int argc, char** argv)
           })
           | views::transform([](const auto& entry) { return entry.path().string(); })
           | rng::to<std::vector>();
-
     rng::sort(imagePaths);
-    // imagePaths.resize(100);
+    // auto imagePaths = views::iota(0, 200) | views::transform([&](int idx) {
+    //                       return (imageDir / std::format("1 ({}).bmp", idx + 1)).string();
+    //                   })
+    //                   | rng::to<std::vector>();
 
+    // imagePaths.resize(100);
     if (imagePaths.empty()) {
         Log.error("No images found in directory");
         return -1;
     }
-
     Log.info("Found {} {} images", imagePaths.size(), config.useColor ? "color" : "grayscale");
     int colorType = config.useColor ? cv::IMREAD_COLOR_BGR : cv::IMREAD_GRAYSCALE;
 

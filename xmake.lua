@@ -12,7 +12,7 @@ end
 add_requires("opencv 4.11.0", {configs = opencv_configs})
 add_requires("yaml-cpp 0.8.0")
 
-add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})  -- for intellisense like clangd
+add_rules("plugin.compile_commands.autoupdate", {outputdir = "./"})  -- for intellisense like clangd
 
 set_languages("c++23")
 

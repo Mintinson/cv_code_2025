@@ -25,6 +25,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# automatically copy the compile_commands.json to workingDir
+add_custom_target(CopyCompileCommands ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_BINARY_DIR}/compile_commands.json"
+    "${CMAKE_SOURCE_DIR}/compile_commands.json"
+    COMMENT "Copying compile_commands.json to source root..."
+    VERBATIM
+)
+
 include(FetchContent)
 
 if(POLICY CMP0135)

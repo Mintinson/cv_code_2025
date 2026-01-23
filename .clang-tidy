@@ -1,0 +1,61 @@
+---
+Checks: >
+  performance-*,
+  modernize-*,
+  readability-*,
+  cppcoreguidelines-*,
+  clang-analyzer-*,
+  bugprone-*,
+  llvm-namespace-comment,
+  -modernize-use-trailing-return-type,
+  -readability-braces-around-statements,
+  -bugprone-easily-swappable-parameters
+
+
+CheckOptions:
+  # readability check  https://clang.llvm.org/extra/clang-tidy/checks/readability/identifier-naming.html
+  - key: readability-identifier-naming.VariableCase
+    value: CamelBack
+  
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: camelBack
+  - key: readability-identifier-naming.GlobalVariablePrefix
+    value: g_
+  
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.ClassMethodCase
+    value: camelBack
+  
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  
+  # static member variables
+  - key: readability-identifier-naming.ClassMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstantMemberPrefix
+    value: k
+  
+  - key: readability-identifier-naming.ConstantCase
+    value: camelBack
+  
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.MethodCase
+    value: camelBack
+  
+  - key: readability-identifier-naming.ConstantParameterPrefix
+    value: lower_case
+  - key: readability-non-const-parameter
+    value: true

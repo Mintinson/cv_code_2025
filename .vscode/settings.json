@@ -2,4 +2,25 @@
     "C_Cpp.default.compileCommands": [
         "${workspaceFolder}/compile_commands.json"
     ],
+    "clangd.arguments": [
+        "--log=verbose",
+        "--compile-commands-dir=${workspaceFolder}/", // clangd 只需要知道目录即可
+        "--background-index",
+        "--experimental-modules-support",
+        "--function-arg-placeholders=false",
+        // 让 clangd 使用项目里的 .clang-tidy 文件
+        "--clang-tidy",
+        // // 告诉 clangd 你的 .clang-tidy 文件在哪里（通常不需要，默认会找根目录，但这更保险）
+        // "--clang-tidy-checks=file",
+    ]
+    // "clangd.arguments": [
+    //     "--log=verbose",
+    //     "--compile-commands-dir=${workspaceFolder}/compile_commands.json",
+    //     "--background-index",
+    //     "--experimental-modules-support",
+    //     // 让 clangd 使用项目里的 .clang-tidy 文件
+    //     "--clang-tidy",
+    //     // 告诉 clangd 你的 .clang-tidy 文件在哪里（通常不需要，默认会找根目录，但这更保险）
+    //     "--clang-tidy-checks=file"
+    // ]
 }
